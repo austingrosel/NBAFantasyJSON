@@ -2,6 +2,7 @@ library(curl)
 library(dplyr)
 library(tidyr)
 library(httr)
+library(stringr)
 
 get_ind_schedule = function(year = 2016, team_id = "1610612745") {
   url = paste0("http://data.nba.net/prod/v1/", year, "/teams/", team_id, "/schedule.json")
@@ -66,7 +67,7 @@ get_boxscore <- function(today = "20181017", game_id = "0021800003", teams_df) {
   df$pos = NULL
   
   players = get_players()
-  players = players[,c("fullName", "personId", "yearsPro", "pos", "age")]
+  players = players[,c("fullName", "personId", "jersey", "yearsPro", "pos", "age")]
   
   df = merge(players, df, by = "personId")
   df = df[order(df$id),]
@@ -87,7 +88,7 @@ get_players <- function(year = 2018) {
   
   df = json$league$standard
   df$fullName = paste(df$firstName, df$lastName)
-  df = df %>% select(firstName, lastName, fullName, personId, teamId, isActive,
+  df = df %>% select(firstName, lastName, fullName, personId, teamId, jersey, isActive,
                      pos, heightFeet, heightInches, weightPounds, dateOfBirthUTC, yearsPro) %>%
               filter(isActive == "TRUE")
   df$age = round((Sys.Date() - as.Date(df$dateOfBirthUTC))/365,1)

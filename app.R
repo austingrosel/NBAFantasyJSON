@@ -12,6 +12,7 @@ library(DT)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
+  tags$style(type="text/css", "#score.recalculating { opacity: 1.0; }"),
   tags$style(type="text/css", "#away_name.recalculating { opacity: 1.0; }"),
   tags$style(type="text/css", "#away_tbl.recalculating { opacity: 1.0; }"),
   tags$style(type="text/css", "#home_name.recalculating { opacity: 1.0; }"),
@@ -59,20 +60,22 @@ server <- function(input, output) {
     validate(
       need(input$game_desc != " vs. ", "No games happening today.")
     )
-    this_game = scoreboard()[scoreboard()$game_desc == input$game_desc, ]
+    invalidateLater(5 * 1000)
+    games = get_games_today(today = today())
+    this_game = games[games$game_desc == input$game_desc, ]
     if(this_game$statusNum == 3) {
       HTML(paste0("FINAL: ", 
                   this_game$vTeam$triCode, ": ", this_game$vTeam$score, " ",
                   this_game$hTeam$triCode, ": ", this_game$hTeam$score))
     } else if (this_game$statusNum == 2) {
-      HTML(paste0("Q", this_game$period$current, ": ", this_game$clock, " ", 
+      HTML(paste0("Q", this_game$period$current, ": ", this_game$clock, " | ", 
                   this_game$vTeam$triCode, ": ", this_game$vTeam$score, " ",
                   this_game$hTeam$triCode, ": ", this_game$hTeam$score))
     }
   })
   
   boxscore = reactive({
-    invalidateLater(60 * 1000)
+    invalidateLater(30 * 1000)
     validate(
       need(length(input$game_desc) > 0, "Game ID not found.")
     )
@@ -101,8 +104,8 @@ server <- function(input, output) {
      )
      DT::datatable(boxscore() %>% 
        filter(team_short_name == teams()[1]) %>% 
-       select(fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min), 
-      options = list(dom = 't')) %>%
+       select(jersey, fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min), 
+      options = list(dom = 't'), rownames= FALSE) %>%
        formatStyle(
          'isOnCourt',
          target = 'row',
@@ -129,8 +132,8 @@ server <- function(input, output) {
      )
      DT::datatable(boxscore() %>% 
        filter(team_short_name == teams()[2]) %>% 
-       select(fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min), 
-     options = list(dom = 't')) %>%
+       select(jersey, fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min), 
+     options = list(dom = 't'), rownames= FALSE) %>%
        formatStyle(
          'isOnCourt',
          target = 'row',
