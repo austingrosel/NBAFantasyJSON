@@ -27,7 +27,7 @@ get_games_today <- function(today = "20181017") {
     readr::read_lines() %>%
     jsonlite::fromJSON(simplifyVector = T)
   df = json$games
-  df$game_desc = paste(df$vTeam$triCode, 'vs.', df$hTeam$triCode)
+  df$game_desc = paste(df$vTeam$triCode, 'vs.', df$hTeam$triCode, df$startTimeEastern)
   return(df)
 }
 

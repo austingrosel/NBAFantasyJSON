@@ -58,7 +58,7 @@ server <- function(input, output) {
       need(length(input$game_desc) > 0, "Game ID not found.")
     )
     validate(
-      need(input$game_desc != " vs. ", "No games happening today.")
+      need(input$game_desc != " vs.  ", "No games happening today.")
     )
     invalidateLater(5 * 1000)
     games = get_games_today(today = today())
@@ -80,7 +80,7 @@ server <- function(input, output) {
       need(length(input$game_desc) > 0, "Game ID not found.")
     )
     validate(
-      need(input$game_desc != " vs. ", "No games happening today.")
+      need(input$game_desc != " vs.  ", "No games happening today.")
     )
     game_id = scoreboard()[scoreboard()$game_desc == input$game_desc, ]$gameId
     df = get_boxscore(today = today(), game_id = game_id, teams_df = teams_df)
