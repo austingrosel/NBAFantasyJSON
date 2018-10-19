@@ -9,6 +9,7 @@
 
 library(shiny)
 library(DT)
+library(sendmailR)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -41,6 +42,26 @@ color_from_middle <- function (data, color1,color2) {
 } 
 
 server <- function(input, output) {
+  timeStop <- "23:45:20"
+  
+  toStop <- as.POSIXct(timeStop, format="%H:%M:%S")
+  if (Sys.time() > toStop) {
+    toStop <- toStop + 86400
+  }
+  secsToStop <- round(as.numeric(difftime(toStop, Sys.time(), units = "secs")) * 1000)
+  timeToStop <- reactiveTimer(secsToStop)
+  trick <- reactiveValues()
+  trick$toFire <- FALSE
+  
+  observeEvent(timeToStop(), {
+    if (trick$toFire) {
+      stopApp()
+    } else {
+      trick$toFire <- TRUE
+    }
+  })
+  
+  
   today = reactive({
     gsub("-", "", input$date)
   })
