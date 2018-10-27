@@ -25,7 +25,7 @@ for (i in 1:nrow(games_already_played)) {
   print(paste(i, games_already_played[i, ]$date))
 }
 seconds = proc.time() - start
-print(paste("Loop took", round(seconds[3], 0), "seconds."))
+print(paste("Loop took", round(seconds[3], 0), "seconds, or", round(seconds[3]/60, 2), "minutes."))
 
 total_bs = merge(total_bs, schedule_2018[,c("team_id", "startDateEastern", "game_num")], by.x = c("team_id", "date"), by.y = c("team_id", "startDateEastern"), all.x = T)
 

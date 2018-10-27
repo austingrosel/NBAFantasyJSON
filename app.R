@@ -48,9 +48,11 @@ ui <- fluidPage(
   
   fluidRow(
     column(6,
+           radioButtons("away_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
            plotlyOutput("away_plot")
     ),
     column(6,
+           radioButtons("home_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
            plotlyOutput("home_plot")
     )
   )
@@ -119,7 +121,7 @@ server <- function(input, output) {
   })
   
   boxscore = reactive({
-    invalidateLater(30 * 1000)
+    invalidateLater(60 * 1000)
     validate(
       need(length(input$game_desc) > 0, "Game ID not found.")
     )
@@ -202,23 +204,88 @@ server <- function(input, output) {
                    backgroundPosition = 'center')
    })
    
+   away_p = reactive({
+     id = away_team()[input$away_tbl_rows_selected, ]$personId
+     fd = total_bs %>% 
+       filter(personId == id)
+     
+     if(input$away_options == "FP") {
+       ggplot(fd, aes(x = game_num, y = fp_pts)) + 
+         geom_line() + geom_point(aes(color = min)) +
+         scale_color_gradient(limits = c(10, 38), oob=squish) +
+         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     } else if (input$away_options == "DRE") {
+       ggplot(fd, aes(x = game_num, y = DRE)) + 
+         geom_line() + geom_point(aes(color = fp_pts)) +
+         scale_color_gradient(limits = c(15, 40), oob=squish) +
+         ylim(-5, max(total_bs[!is.na(total_bs$fp_pts),]$DRE)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     } else {
+       ggplot(fd, aes(x = game_num, y = min)) + 
+         geom_line() + geom_point(aes(color = fp_pts)) +
+         scale_color_gradient(limits = c(15, 40), oob=squish) +
+         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$min)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     }
+   })
+   
    output$away_plot = renderPlotly({
      validate(
        need(!is.null(input$away_tbl_rows_selected), "No away player selected.")
      )
-     id = away_team()[input$away_tbl_rows_selected, ]$personId
+     p = away_p()
+     ggplotly(p)
+   })
+   
+   home_p = reactive({
+     id = home_team()[input$home_tbl_rows_selected, ]$personId
      fd = total_bs %>% 
        filter(personId == id)
-     p = ggplot(fd, aes(x = game_num, y = fp_pts)) + 
-       geom_line() + geom_point(aes(color = min)) +
-       scale_color_gradient(limits = c(10, 38), oob=squish) +
-       ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
-       xlim(1, 82) + 
-       ggtitle(paste(fd$fullName, 
-                     "| AvgMin:", round(mean(fd$min), 1),
-                     "| AvgFp:", round(mean(fd$fp_pts), 1))) +
-       ggthemes::theme_fivethirtyeight()
-     ggplotly(p)
+     
+     if(input$home_options == "FP") {
+       ggplot(fd, aes(x = game_num, y = fp_pts)) + 
+         geom_line() + geom_point(aes(color = min)) +
+         scale_color_gradient(limits = c(10, 38), oob=squish) +
+         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     } else if (input$home_options == "DRE") {
+       ggplot(fd, aes(x = game_num, y = DRE)) + 
+         geom_line() + geom_point(aes(color = fp_pts)) +
+         scale_color_gradient(limits = c(15, 40), oob=squish) +
+         ylim(-5, max(total_bs[!is.na(total_bs$fp_pts),]$DRE)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     } else {
+       ggplot(fd, aes(x = game_num, y = min)) + 
+         geom_line() + geom_point(aes(color = fp_pts)) +
+         scale_color_gradient(limits = c(15, 40), oob=squish) +
+         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$min)) +
+         xlim(1, 82) + 
+         ggtitle(paste(fd$fullName, 
+                       "| AvgMin:", round(mean(fd$min), 1),
+                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+         ggthemes::theme_fivethirtyeight()
+     }
    })
    
    output$home_plot = renderPlotly({
@@ -228,15 +295,7 @@ server <- function(input, output) {
      id = home_team()[input$home_tbl_rows_selected, ]$personId
      fd = total_bs %>% 
        filter(personId == id)
-     p = ggplot(fd, aes(x = game_num, y = fp_pts)) + 
-       geom_line() + geom_point(aes(color = min)) +
-       scale_color_gradient(limits = c(10, 38), oob=squish) +
-       ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
-       xlim(1, 82) + 
-       ggtitle(paste(fd$fullName, 
-                     "| AvgMin:", round(mean(fd$min), 1),
-                     "| AvgFp:", round(mean(fd$fp_pts), 1))) +
-       ggthemes::theme_fivethirtyeight()
+     p = home_p()
      ggplotly(p)
    })
 }
