@@ -4,7 +4,7 @@ library(tidyr)
 library(httr)
 library(stringr)
 
-get_schedule = function(year = 2017) {
+get_league_schedule = function(year = 2017) {
   json <- paste0("http://data.nba.net/prod/v2/", year, "/schedule.json") %>%
     curl() %>%
     readr::read_lines() %>%
@@ -21,10 +21,34 @@ get_schedule = function(year = 2017) {
     filter(seasonStageId == 2) %>%
     select(gameId, gameUrlCode, home_id, visitor_id) %>%
     separate(gameUrlCode, c('date', 'teams'), sep="/") %>%
-    mutate(teams = paste(substr(teams, 1, 3), '@', substr(teams, 4, 6)))
+    mutate(teams = paste(substr(teams, 1, 3), '@', substr(teams, 4, 6)),
+           season = year)
   
   return(df)
 }
+
+get_ind_schedule = function(year = 2019, team_id = "1610612745") {
+  teams = get_teams() %>% filter(is_nba_team == T)
+  
+  json <- paste0("http://data.nba.net/prod/v1/", year, "/teams/", team_id, "/schedule.json") %>%
+    curl() %>%
+    readr::read_lines() %>%
+    jsonlite::fromJSON(simplifyVector = T)
+  
+  df = json$league$standard
+  
+  df = df %>%
+    filter(seasonStageId == 2) %>% 
+    mutate(
+      team_id = as.character(team_id),
+      game_num = 1:82
+    ) %>%
+    select(team_id, gameId, startDateEastern, isHomeTeam, game_num)
+  
+  df = merge(df, teams %>% select("team_id", "team_abbrev"), by = "team_id")
+  return(df)
+}
+
 
 get_teams = function() {
   json <- paste0(url = "http://data.nba.net/json/cms/noseason/sportsmeta/nba_teams.json") %>%
@@ -125,10 +149,16 @@ get_boxscore <- function(today = "20181017", game_id = "0021800003", teams_df) {
 }
 
 get_fanduel_boxscore <- function(game_id = "0021800003") {
-  json <- paste0("http://stats.nba.com/stats/infographicfanduelplayer/?gameId=", game_id) %>%
-    curl() %>%
-    readr::read_lines() %>%
-    jsonlite::fromJSON(simplifyVector = T)
+  url <- paste0("http://stats.nba.com/stats/infographicfanduelplayer/?gameId=", game_id)
+  
+  json <- tryCatch({
+    url %>%
+      curl() %>%
+      readr::read_lines() %>%
+      jsonlite::fromJSON(simplifyVector = T)
+  }, error=function(cond) {
+    message(paste("URL does not seem to exist:", url))
+  })
   
   df = as.data.frame(json$resultSets$rowSet[[1]])
   if(nrow(df) == 0) {
@@ -146,3 +176,24 @@ get_fanduel_boxscore <- function(game_id = "0021800003") {
     setNames(tolower(names(.)))
   return(this_df)
 }
+
+
+ind_team_schedule = data.frame()
+for (team_id in teams$team_id) {
+  print(team_id)
+  ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = 2018, team_id = team_id))
+}
+
+sched = get_league_schedule(year = 2019)
+
+count = 1
+fd_bs = data.frame()
+for (game_id in sched$gameId) {
+  print(count)
+  fd_bs = rbind(fd_bs, get_fanduel_boxscore(game_id = game_id))
+  count = count + 1
+}
+
+fd = fd_bs %>%
+  mutate(team_id = as.character(team_id)) %>%
+  left_join(., ind_team_schedule %>% select(gameId, team_id, game_num), by = c("game_id"="gameId", "team_id"))
