@@ -28,7 +28,7 @@ get_league_schedule = function(year = 2017) {
 }
 
 get_ind_schedule = function(year = 2019, team_id = "1610612745") {
-  teams = get_teams() %>% filter(is_nba_team == T)
+  teams = get_teams()
   
   json <- paste0("http://data.nba.net/prod/v1/", year, "/teams/", team_id, "/schedule.json") %>%
     curl() %>%
@@ -41,9 +41,10 @@ get_ind_schedule = function(year = 2019, team_id = "1610612745") {
     filter(seasonStageId == 2) %>% 
     mutate(
       team_id = as.character(team_id),
-      game_num = 1:82
+      game_num = 1:82,
+      season = year
     ) %>%
-    select(team_id, gameId, startDateEastern, isHomeTeam, game_num)
+    select(team_id, gameId, startDateEastern, isHomeTeam, game_num, season)
   
   df = merge(df, teams %>% select("team_id", "team_abbrev"), by = "team_id")
   return(df)
@@ -57,6 +58,9 @@ get_teams = function() {
     jsonlite::fromJSON(simplifyVector = T)
   
   df = json$sports_content$team$team
+  
+  df = df %>% filter(is_nba_team == T)
+  
   return(df)
 }
 
@@ -87,8 +91,6 @@ get_team_games <- function(date = "20191022") {
            )
   return(df)
 }
-
-get_team_games(date = "20191022")
 
 get_players <- function(year = 2019) {
   json <- paste0(url = "https://data.nba.net/prod/v1/",year,"/players.json") %>%
@@ -177,23 +179,27 @@ get_fanduel_boxscore <- function(game_id = "0021800003") {
   return(this_df)
 }
 
+year = 2017
+
+teams = get_teams()
 
 ind_team_schedule = data.frame()
 for (team_id in teams$team_id) {
   print(team_id)
-  ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = 2018, team_id = team_id))
+  ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = year, team_id = team_id))
 }
 
-sched = get_league_schedule(year = 2019)
+sched = get_league_schedule(year = year)
 
 count = 1
 fd_bs = data.frame()
 for (game_id in sched$gameId) {
   print(count)
   fd_bs = rbind(fd_bs, get_fanduel_boxscore(game_id = game_id))
+  Sys.sleep(2)
   count = count + 1
 }
 
 fd = fd_bs %>%
   mutate(team_id = as.character(team_id)) %>%
-  left_join(., ind_team_schedule %>% select(gameId, team_id, game_num), by = c("game_id"="gameId", "team_id"))
+  left_join(., ind_team_schedule %>% select(gameId, team_id, season, game_num), by = c("game_id"="gameId", "team_id"))
