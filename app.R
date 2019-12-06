@@ -1,18 +1,13 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
 library(shiny)
 library(DT)
 library(sendmailR)
 library(ggplot2)
 library(plotly)
 library(scales)
+library(curl)
+library(ggthemes)
+
+source('NBAScrapeFunctions.R')
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -22,40 +17,51 @@ ui <- fluidPage(
   tags$style(type="text/css", "#home_name.recalculating { opacity: 1.0; }"),
   tags$style(type="text/css", "#home_tbl.recalculating { opacity: 1.0; }"),
   
-  # Application title
   titlePanel("NBA Box Score"),
-  dateInput('date', label = h4("Date input")),
-  uiOutput("select_todays_games"),
-  fluidRow(h2(uiOutput("score")), align = "center"),
-  fluidRow(
-    column(6, 
-           h2(uiOutput("away_name"))
-    ),
-    column(6,
-           h2(uiOutput("home_name"))
-    )
-  ),
-  fluidRow(
-    column(6,
-           DTOutput("away_tbl")
-           ),
-    column(6,
-           DTOutput("home_tbl")
-           )
-  ),
   
-  hr(),
-  
-  fluidRow(
-    column(6,
-           radioButtons("away_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
-           plotlyOutput("away_plot")
+  tabsetPanel(
+    tabPanel("Box Score",
+      dateInput('date', label = h4("Date input")),
+      uiOutput("select_todays_games"),
+      fluidRow(h2(uiOutput("score")), align = "center"),
+      fluidRow(
+        column(6, 
+               h2(uiOutput("away_name"))
+        ),
+        column(6,
+               h2(uiOutput("home_name"))
+        )
+      ),
+      fluidRow(
+        column(6,
+               DTOutput("away_tbl")
+        ),
+        column(6,
+               DTOutput("home_tbl")
+        )
+      ),
+      
+      hr(),
+      
+      fluidRow(
+        column(6,
+               radioButtons("away_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
+               uiOutput("away_shot_stats"),
+               plotlyOutput("away_plot")
+        ),
+        column(6,
+               radioButtons("home_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
+               uiOutput("home_shot_stats"),
+               plotlyOutput("home_plot")
+        )
+      )
     ),
-    column(6,
-           radioButtons("home_options", inline = T, label = "Stat:", choices = c("FP", "DRE", "MIN")),
-           plotlyOutput("home_plot")
+    tabPanel("Season",
+             DTOutput("season_tbl")
     )
   )
+
+
 )
 
 color_from_middle <- function (data, color1,color2) {
@@ -65,24 +71,6 @@ color_from_middle <- function (data, color1,color2) {
 } 
 
 server <- function(input, output) {
-  timeStop <- "23:45:20"
-  
-  toStop <- as.POSIXct(timeStop, format="%H:%M:%S")
-  if (Sys.time() > toStop) {
-    toStop <- toStop + 86400
-  }
-  secsToStop <- round(as.numeric(difftime(toStop, Sys.time(), units = "secs")) * 1000)
-  timeToStop <- reactiveTimer(secsToStop)
-  trick <- reactiveValues()
-  trick$toFire <- FALSE
-  
-  observeEvent(timeToStop(), {
-    if (trick$toFire) {
-      stopApp()
-    } else {
-      trick$toFire <- TRUE
-    }
-  })
   
   today = reactive({
     gsub("-", "", input$date)
@@ -121,7 +109,7 @@ server <- function(input, output) {
   })
   
   boxscore = reactive({
-    invalidateLater(60 * 1000)
+    invalidateLater(30 * 1000)
     validate(
       need(length(input$game_desc) > 0, "Game ID not found.")
     )
@@ -147,7 +135,7 @@ server <- function(input, output) {
   away_team = reactive({
     boxscore() %>% 
       filter(team_short_name == teams()[1]) %>% 
-      select(personId, jersey, fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min)
+      select(personId, jersey, fullName, pos, isOnCourt, age, min, DRE, fd_pts) %>% arrange(-min)
   })
   
   output$away_tbl = renderDT({
@@ -165,79 +153,53 @@ server <- function(input, output) {
                    backgroundSize = '90% 80%',
                    backgroundRepeat = 'no-repeat',
                    backgroundPosition = 'center') %>%
-       formatStyle('fp_pts',
-                   background = styleColorBar(boxscore()$fp_pts, 'steelblue', angle = -90),
+       formatStyle('fd_pts',
+                   background = styleColorBar(boxscore()$fd_pts, 'steelblue', angle = -90),
                    backgroundSize = '90% 80%',
                    backgroundRepeat = 'no-repeat',
                    backgroundPosition = 'center')
    })
    
-   output$home_name = renderUI({
-     HTML(paste("<b>", teams()[2], "</b>"))
-   })
-   
-   home_team = reactive({
-     boxscore() %>% 
-       filter(team_short_name == teams()[2]) %>% 
-       select(personId, jersey, fullName, pos, isOnCourt, age, min, DRE, fp_pts) %>% arrange(-min)
-   })
-   
-   output$home_tbl = renderDT({
-     validate(
-       need(nrow(boxscore()) > 0, "Game ID not found")
-     )
-     DT::datatable(home_team(), selection = 'single',
-       options = list(dom = 't', columnDefs = list(list(visible=FALSE, targets=c(0,4,5)))), rownames = FALSE) %>%
-       formatStyle(
-         'isOnCourt',
-         target = 'row',
-         fontWeight = styleEqual(c(1, 0), c('bold', 'normal'))) %>%
-       formatStyle('DRE',
-                   background=color_from_middle(boxscore()$DRE, 'pink', 'lightblue'),
-                   backgroundSize = '90% 80%',
-                   backgroundRepeat = 'no-repeat',
-                   backgroundPosition = 'center') %>%
-       formatStyle('fp_pts',
-                   background = styleColorBar(boxscore()$fp_pts, 'steelblue', angle = -90),
-                   backgroundSize = '90% 80%',
-                   backgroundRepeat = 'no-repeat',
-                   backgroundPosition = 'center')
+   away_id = reactive({
+     away_team()[input$away_tbl_rows_selected, ]$personId
    })
    
    away_p = reactive({
-     id = away_team()[input$away_tbl_rows_selected, ]$personId
      fd = total_bs %>% 
-       filter(personId == id)
+       filter(personId == away_id())
      
      if(input$away_options == "FP") {
-       ggplot(fd, aes(x = game_num, y = fp_pts)) + 
-         geom_line() + geom_point(aes(color = min)) +
+       ggplot(fd, aes(x = game_num, y = fd_pts)) + 
+         geom_point(aes(color = min)) +
+         geom_smooth(se = F) +
          scale_color_gradient(limits = c(10, 38), oob=squish) +
-         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
+         ylim(0, max(total_bs[!is.na(total_bs$fd_pts),]$fd_pts)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
-                       "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgMin:", round(mean(fd$min, na.rm = T), 1),
+                       "| AvgFp:", round(mean(fd$fd_pts, na.rm = T), 1))) +
          ggthemes::theme_fivethirtyeight()
      } else if (input$away_options == "DRE") {
        ggplot(fd, aes(x = game_num, y = DRE)) + 
-         geom_line() + geom_point(aes(color = fp_pts)) +
+         geom_point(aes(color = fd_pts)) +
+         geom_smooth(se = F) + 
          scale_color_gradient(limits = c(15, 40), oob=squish) +
-         ylim(-5, max(total_bs[!is.na(total_bs$fp_pts),]$DRE)) +
+         ylim(-5, max(total_bs[!is.na(total_bs$fd_pts),]$DRE)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
-                       "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgMin:", round(mean(fd$min, na.rm = T), 1),
+                       "| AvgFp:", round(mean(fd$fd_pts, na.rm = T), 1))) +
          ggthemes::theme_fivethirtyeight()
      } else {
        ggplot(fd, aes(x = game_num, y = min)) + 
-         geom_line() + geom_point(aes(color = fp_pts)) +
+         geom_point(aes(color = fd_pts)) +
+         geom_smooth(se = F) +
          scale_color_gradient(limits = c(15, 40), oob=squish) +
-         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$min)) +
+         ylim(0, max(total_bs[!is.na(total_bs$fd_pts),]$min)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
-                       "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgMin:", round(mean(fd$min, na.rm = T), 1),
+                       "| AvgFp:", round(mean(fd$fd_pts, na.rm = T), 1))) +
          ggthemes::theme_fivethirtyeight()
      }
    })
@@ -250,40 +212,78 @@ server <- function(input, output) {
      ggplotly(p)
    })
    
+   output$home_name = renderUI({
+     HTML(paste("<b>", teams()[2], "</b>"))
+   })
+   
+   home_team = reactive({
+     boxscore() %>% 
+       filter(team_short_name == teams()[2]) %>% 
+       select(personId, jersey, fullName, pos, isOnCourt, age, min, DRE, fd_pts) %>% arrange(-min)
+   })
+   
+   output$home_tbl = renderDT({
+     validate(
+       need(nrow(boxscore()) > 0, "Game ID not found")
+     )
+     DT::datatable(home_team(), selection = 'single',
+                   options = list(dom = 't', columnDefs = list(list(visible=FALSE, targets=c(0,4,5)))), rownames = FALSE) %>%
+       formatStyle(
+         'isOnCourt',
+         target = 'row',
+         fontWeight = styleEqual(c(1, 0), c('bold', 'normal'))) %>%
+       formatStyle('DRE',
+                   background=color_from_middle(boxscore()$DRE, 'pink', 'lightblue'),
+                   backgroundSize = '90% 80%',
+                   backgroundRepeat = 'no-repeat',
+                   backgroundPosition = 'center') %>%
+       formatStyle('fd_pts',
+                   background = styleColorBar(boxscore()$fd_pts, 'steelblue', angle = -90),
+                   backgroundSize = '90% 80%',
+                   backgroundRepeat = 'no-repeat',
+                   backgroundPosition = 'center')
+   })
+   
+   home_id = reactive({
+     home_team()[input$home_tbl_rows_selected, ]$personId
+   })
+   
    home_p = reactive({
-     id = home_team()[input$home_tbl_rows_selected, ]$personId
      fd = total_bs %>% 
-       filter(personId == id)
+       filter(personId == home_id())
      
      if(input$home_options == "FP") {
-       ggplot(fd, aes(x = game_num, y = fp_pts)) + 
-         geom_line() + geom_point(aes(color = min)) +
+       ggplot(fd, aes(x = game_num, y = fd_pts)) + 
+         geom_point(aes(color = min)) +
+         geom_smooth(se = F) +
          scale_color_gradient(limits = c(10, 38), oob=squish) +
-         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$fp_pts)) +
+         ylim(0, max(total_bs[!is.na(total_bs$fd_pts),]$fd_pts)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
                        "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgFp:", round(mean(fd$fd_pts), 1))) +
          ggthemes::theme_fivethirtyeight()
      } else if (input$home_options == "DRE") {
        ggplot(fd, aes(x = game_num, y = DRE)) + 
-         geom_line() + geom_point(aes(color = fp_pts)) +
+         geom_point(aes(color = fd_pts)) +
+         geom_smooth(se = F) +
          scale_color_gradient(limits = c(15, 40), oob=squish) +
-         ylim(-5, max(total_bs[!is.na(total_bs$fp_pts),]$DRE)) +
+         ylim(-5, max(total_bs[!is.na(total_bs$fd_pts),]$DRE)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
                        "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgFp:", round(mean(fd$fd_pts), 1))) +
          ggthemes::theme_fivethirtyeight()
      } else {
        ggplot(fd, aes(x = game_num, y = min)) + 
-         geom_line() + geom_point(aes(color = fp_pts)) +
+         geom_point(aes(color = fd_pts)) +
+         geom_smooth(se = F) +
          scale_color_gradient(limits = c(15, 40), oob=squish) +
-         ylim(0, max(total_bs[!is.na(total_bs$fp_pts),]$min)) +
+         ylim(0, max(total_bs[!is.na(total_bs$fd_pts),]$min)) +
          xlim(1, 82) + 
          ggtitle(paste(fd$fullName, 
                        "| AvgMin:", round(mean(fd$min), 1),
-                       "| AvgFp:", round(mean(fd$fp_pts), 1))) +
+                       "| AvgFp:", round(mean(fd$fd_pts), 1))) +
          ggthemes::theme_fivethirtyeight()
      }
    })
@@ -292,11 +292,29 @@ server <- function(input, output) {
      validate(
        need(!is.null(input$home_tbl_rows_selected), "No home player selected.")
      )
-     id = home_team()[input$home_tbl_rows_selected, ]$personId
      fd = total_bs %>% 
-       filter(personId == id)
+       filter(personId == home_id())
      p = home_p()
      ggplotly(p)
+   })
+
+   output$season_tbl = renderDataTable({
+     datatable(total_bs %>% 
+       group_by(personId, fullName) %>% 
+       summarise(games = n(), 
+                 min = mean(min, na.rm = T), 
+                 mean_DRE = mean(DRE, na.rm = T), 
+                 mean_fp = mean(fd_pts, na.rm = T), 
+                 sd_fp = sd(fd_pts, na.rm = T), 
+                 min_fp = min(fd_pts, na.rm = T), 
+                 max_fp = max(fd_pts, na.rm = T)) %>% 
+       arrange(-mean_fp) %>%
+       ungroup() %>%
+       select(-personId) %>%
+       mutate_if(is.numeric, round, 1), filter = list(position = 'top', clear = FALSE),
+       options = list(
+         pageLength = 50
+       ))
    })
 }
 

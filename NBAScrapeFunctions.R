@@ -27,15 +27,32 @@ get_league_schedule = function(year = 2017) {
   return(df)
 }
 
-get_ind_schedule = function(year = 2019, team_id = "1610612745") {
-  teams = get_teams()
-  
-  json <- paste0("http://data.nba.net/prod/v1/", year, "/teams/", team_id, "/schedule.json") %>%
+get_games_today <- function(today = "20181017") {
+  url = paste0("http://data.nba.net/prod/v1/",today,"/scoreboard.json")
+  json <- url %>%
     curl() %>%
     readr::read_lines() %>%
     jsonlite::fromJSON(simplifyVector = T)
+  df = json$games
+  df$game_desc = paste(df$vTeam$triCode, 'vs.', df$hTeam$triCode)
+  return(df)
+}
+
+get_ind_schedule = function(year = 2019, team_id = NA, team_name = NA) {
+  teams = get_teams()
   
-  df = json$league$standard
+  if(!is.na(team_id)) {
+    json <- paste0("http://data.nba.net/prod/v1/", year, "/teams/", team_id, "/schedule.json") %>%
+      curl() %>%
+      readr::read_lines() %>%
+      jsonlite::fromJSON(simplifyVector = T)
+    df = json$league$standard
+  } else {
+    json <- paste0("http://data.nba.net/json/cms/", year,"/team/", team_name,"/schedule.json") %>%
+      curl() %>%
+      readr::read_lines() %>%
+      jsonlite::fromJSON(simplifyVector = T)
+  }
   
   df = df %>%
     filter(seasonStageId == 2) %>% 
@@ -130,7 +147,7 @@ get_boxscore <- function(today = "20181017", game_id = "0021800003", teams_df) {
   }
   
   df$sortKey = NULL
-  df = cbind(df[,c(1:3, 5, 9)], sapply(df[,c(7, 10:27)], as.numeric))
+  df = cbind(df[,c(1:3, 5:6, 11)], sapply(df[,c(7, 12:28)], as.numeric))
   df = df %>% mutate(
       DRE = round(points * 0.8 - (fga - tpa) * 0.7 - tpa * 0.6 + offReb * 0.1 + 
                     defReb * 0.4 + assists * 0.5 + steals * 1.7 + blocks * 0.8 - 
@@ -179,27 +196,42 @@ get_fanduel_boxscore <- function(game_id = "0021800003") {
   return(this_df)
 }
 
-year = 2017
-
-teams = get_teams()
-
-ind_team_schedule = data.frame()
-for (team_id in teams$team_id) {
-  print(team_id)
-  ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = year, team_id = team_id))
+get_season_long_boxscores = function(year = 2015) {
+  teams = get_teams()
+  
+  ind_team_schedule = data.frame()
+  if(year < 2016) {
+    for (team_id in teams$team_id) {
+      print(team_id)
+      ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = year, team_id = team_id))
+    }
+  } else {
+    team_choices = c('hawks' ,'celtics','nets','hornets','bulls', 'cavaliers', 'mavericks'
+                  ,'nuggets', 'pistons', 'warriors', 'rockets','pacers','clippers' ,'lakers'
+                  ,'grizzlies' ,'heat' ,'bucks','timberwolves','pelicans','knicks'
+                  ,'thunder','magic','sixers','suns','blazers','kings','raptors','jazz','wizards')
+    for (team in team_choices) {
+      print(team)
+      ind_team_schedule = rbind(ind_team_schedule, get_ind_schedule(year = year, team_name = team))
+    }
+  }
+  
+  sched = get_league_schedule(year = year)
+  
+  count = 1
+  fd_bs = data.frame()
+  for (game_id in sched$gameId) {
+    print(count)
+    fd_bs = rbind(fd_bs, get_fanduel_boxscore(game_id = game_id))
+    Sys.sleep(1)
+    count = count + 1
+  }
+  
+  fd = fd_bs %>%
+    mutate(team_id = as.character(team_id)) %>%
+    left_join(., ind_team_schedule %>% select(gameId, team_id, season, game_num), by = c("game_id"="gameId", "team_id"))
+  
+  return(fd)
 }
 
-sched = get_league_schedule(year = year)
 
-count = 1
-fd_bs = data.frame()
-for (game_id in sched$gameId) {
-  print(count)
-  fd_bs = rbind(fd_bs, get_fanduel_boxscore(game_id = game_id))
-  Sys.sleep(2)
-  count = count + 1
-}
-
-fd = fd_bs %>%
-  mutate(team_id = as.character(team_id)) %>%
-  left_join(., ind_team_schedule %>% select(gameId, team_id, season, game_num), by = c("game_id"="gameId", "team_id"))
